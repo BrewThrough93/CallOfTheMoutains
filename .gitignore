@@ -1,0 +1,35 @@
+# Unreal Engine 5 .gitignore
+
+# Visual Studio
+.vs/
+*.vsconfig
+*.sln
+
+# Compiled binaries (can be rebuilt)
+Binaries/
+
+# Build intermediates
+Intermediate/
+
+# Derived data cache
+DerivedDataCache/
+
+# Saved local data (logs, autosaves, etc.)
+Saved/
+
+# Additional caches
+.idea/
+*.VC.db
+*.opensdf
+*.opendb
+*.sdf
+*.suo
+*.xcodeproj
+*.xcworkspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Crashpad
+CrashpadDB/
