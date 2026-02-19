@@ -1,21 +1,44 @@
 // CallOfTheMoutains - Player Stats HUD Widget Implementation
-// Dark Souls aesthetic with ember/rust color palette
+// Souls-like design with dark dystopian aesthetic
 
 #include "PlayerStatsWidget.h"
 #include "UIStyle.h"
 #include "HealthComponent.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Notifications/SProgressBar.h"
+#include "Widgets/SOverlay.h"
 #include "Styling/CoreStyle.h"
-#include "Materials/MaterialInstanceDynamic.h"
+
+// ============================================================================
+// Souls-like Color Palette
+// ============================================================================
+namespace SoulsColors
+{
+	// Health bar - deep crimson blood red
+	inline FLinearColor HealthFill()      { return FLinearColor(0.7f, 0.12f, 0.08f, 1.0f); }
+	inline FLinearColor HealthDamage()    { return FLinearColor(0.95f, 0.3f, 0.15f, 0.8f); }  // Trail after damage
+	inline FLinearColor HealthCritical()  { return FLinearColor(0.5f, 0.05f, 0.05f, 1.0f); }  // Low health
+	inline FLinearColor HealthBackground(){ return FLinearColor(0.15f, 0.03f, 0.02f, 0.9f); }
+
+	// Stamina bar - cold grey-teal (contrasts warm health)
+	inline FLinearColor StaminaFill()     { return FLinearColor(0.25f, 0.55f, 0.45f, 1.0f); }
+	inline FLinearColor StaminaDepleted() { return FLinearColor(0.12f, 0.25f, 0.2f, 1.0f); }
+	inline FLinearColor StaminaBackground(){ return FLinearColor(0.04f, 0.08f, 0.07f, 0.85f); }
+
+	// Frame - rusted iron
+	inline FLinearColor FrameOuter()      { return FLinearColor(0.35f, 0.2f, 0.1f, 0.95f); }   // Rust
+	inline FLinearColor FrameInner()      { return FLinearColor(0.15f, 0.12f, 0.1f, 0.9f); }   // Dark iron
+	inline FLinearColor FrameHighlight()  { return FLinearColor(0.5f, 0.3f, 0.15f, 0.6f); }    // Edge highlight
+
+	// Segment dividers
+	inline FLinearColor SegmentLine()     { return FLinearColor(0.0f, 0.0f, 0.0f, 0.5f); }
+}
 
 void UPlayerStatsWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	CreateHealthMaterial();
 }
 
 void UPlayerStatsWidget::NativeDestruct()
@@ -33,101 +56,194 @@ void UPlayerStatsWidget::ReleaseSlateResources(bool bReleaseChildren)
 {
 	Super::ReleaseSlateResources(bReleaseChildren);
 
-	HealthImageWidget.Reset();
-	StaminaBarWidget.Reset();
-	HealthBorder.Reset();
-	StaminaBorder.Reset();
+	HealthFillBox.Reset();
+	HealthDamageBox.Reset();
+	HealthFillBorder.Reset();
+	StaminaFillBox.Reset();
+	StaminaDamageBox.Reset();
+	StaminaFillBorder.Reset();
+	HealthFrameBorder.Reset();
+	StaminaFrameBorder.Reset();
 }
 
 TSharedRef<SWidget> UPlayerStatsWidget::RebuildWidget()
 {
-	const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush("GenericWhiteBox");
-
-	// Floating elements - no container, subtle shadows via dark underlays
+	// Main container - anchored to top-left
 	return SNew(SBox)
-		.HAlign(HAlign_Right)
+		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Top)
-		.Padding(FMargin(0, CornerPadding.Y, CornerPadding.X, 0))
+		.Padding(FMargin(CornerPadding.X, CornerPadding.Y, 0, 0))
 		[
 			SNew(SVerticalBox)
-			// Health EKG - floating with subtle shadow
+			// Health Bar
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(FMargin(0, 0, 0, 8.0f))
+			.Padding(FMargin(0, 0, 0, BarSpacing))
 			[
-				SNew(SOverlay)
-				// Shadow layer (offset dark copy)
-				+ SOverlay::Slot()
-				.Padding(FMargin(3.0f, 3.0f, 0, 0))
+				BuildStatBar(
+					HealthFillBox,
+					HealthDamageBox,
+					HealthFillBorder,
+					HealthBarWidth,
+					HealthBarHeight,
+					HealthBarSegments,
+					SoulsColors::HealthFill(),
+					SoulsColors::HealthBackground()
+				)
+			]
+			// Stamina Bar - slightly offset for visual interest
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(FMargin(16.0f, 0, 0, 0))  // Indented from health bar
+			[
+				BuildStatBar(
+					StaminaFillBox,
+					StaminaDamageBox,
+					StaminaFillBorder,
+					StaminaBarWidth,
+					StaminaBarHeight,
+					StaminaBarSegments,
+					SoulsColors::StaminaFill(),
+					SoulsColors::StaminaBackground()
+				)
+			]
+		];
+}
+
+TSharedRef<SWidget> UPlayerStatsWidget::BuildStatBar(
+	TSharedPtr<SBox>& OutFillBox,
+	TSharedPtr<SBox>& OutDamageBox,
+	TSharedPtr<SBorder>& OutFillBorder,
+	float Width,
+	float Height,
+	int32 Segments,
+	const FLinearColor& FillColor,
+	const FLinearColor& BackgroundColor)
+{
+	const FSlateBrush* WhiteBrush = FCoreStyle::Get().GetBrush("GenericWhiteBox");
+	const float InnerHeight = Height - (FrameThickness * 2) - 2.0f;
+
+	// Build segment overlay if segments are enabled
+	TSharedPtr<SHorizontalBox> SegmentOverlay;
+	if (Segments > 0)
+	{
+		SAssignNew(SegmentOverlay, SHorizontalBox);
+		float SegmentWidth = Width / Segments;
+		for (int32 i = 0; i < Segments - 1; ++i)
+		{
+			SegmentOverlay->AddSlot()
+				.AutoWidth()
 				[
 					SNew(SBox)
-					.WidthOverride(HealthImageSize.X)
-					.HeightOverride(HealthImageSize.Y)
+					.WidthOverride(SegmentWidth)
+				];
+			// Add segment divider line
+			SegmentOverlay->AddSlot()
+				.AutoWidth()
+				[
+					SNew(SBox)
+					.WidthOverride(1.0f)
+					.HeightOverride(InnerHeight)
 					[
 						SNew(SBorder)
 						.BorderImage(WhiteBrush)
-						.BorderBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.4f))
+						.BorderBackgroundColor(SoulsColors::SegmentLine())
 					]
-				]
-				// Main EKG element
-				+ SOverlay::Slot()
+				];
+		}
+	}
+
+	// The stat bar structure:
+	// [Outer Frame] -> [Inner Shadow] -> [Background + Damage Trail + Fill]
+	return SNew(SOverlay)
+		// Layer 0: Drop shadow
+		+ SOverlay::Slot()
+		.Padding(FMargin(3.0f, 3.0f, 0, 0))
+		[
+			SNew(SBox)
+			.WidthOverride(Width + FrameThickness * 2)
+			.HeightOverride(Height + FrameThickness * 2)
+			[
+				SNew(SBorder)
+				.BorderImage(WhiteBrush)
+				.BorderBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.5f))
+			]
+		]
+		// Layer 1: Outer frame (rust color)
+		+ SOverlay::Slot()
+		[
+			SNew(SBox)
+			.WidthOverride(Width + FrameThickness * 2)
+			.HeightOverride(Height + FrameThickness * 2)
+			[
+				SNew(SBorder)
+				.BorderImage(WhiteBrush)
+				.BorderBackgroundColor(SoulsColors::FrameOuter())
+				.Padding(FMargin(FrameThickness))
 				[
-					SNew(SBox)
-					.WidthOverride(HealthImageSize.X)
-					.HeightOverride(HealthImageSize.Y)
+					// Inner frame (dark iron)
+					SNew(SBorder)
+					.BorderImage(WhiteBrush)
+					.BorderBackgroundColor(SoulsColors::FrameInner())
+					.Padding(FMargin(1.0f))
 					[
-						SAssignNew(HealthBorder, SBorder)
-						.BorderImage(WhiteBrush)
-						.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f, 0.85f))
+						// Background
+						SNew(SOverlay)
+						// Background fill
+						+ SOverlay::Slot()
 						[
-							SAssignNew(HealthImageWidget, SImage)
-							.Image(&HealthBrush)
+							SNew(SBorder)
+							.BorderImage(WhiteBrush)
+							.BorderBackgroundColor(BackgroundColor)
+						]
+						// Damage trail bar (shows where health was) - wrapped in SBox for size control
+						+ SOverlay::Slot()
+						.HAlign(HAlign_Left)
+						[
+							SAssignNew(OutDamageBox, SBox)
+							.WidthOverride(Width)  // Full width initially
+							.HeightOverride(InnerHeight)
+							[
+								SNew(SBorder)
+								.BorderImage(WhiteBrush)
+								.BorderBackgroundColor(SoulsColors::HealthDamage())
+							]
+						]
+						// Main fill bar - wrapped in SBox for size control
+						+ SOverlay::Slot()
+						.HAlign(HAlign_Left)
+						[
+							SAssignNew(OutFillBox, SBox)
+							.WidthOverride(Width)  // Full width initially
+							.HeightOverride(InnerHeight)
+							[
+								SAssignNew(OutFillBorder, SBorder)
+								.BorderImage(WhiteBrush)
+								.BorderBackgroundColor(FillColor)
+							]
 						]
 					]
 				]
 			]
-			// Stamina bar - floating, offset slightly for visual interest
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.HAlign(HAlign_Right)
-			.Padding(FMargin(0, 0, 12.0f, 0))
+		]
+		// Layer 2: Top edge highlight (subtle bevel effect)
+		+ SOverlay::Slot()
+		.VAlign(VAlign_Top)
+		[
+			SNew(SBox)
+			.WidthOverride(Width + FrameThickness * 2)
+			.HeightOverride(1.0f)
 			[
-				SNew(SOverlay)
-				// Shadow layer
-				+ SOverlay::Slot()
-				.Padding(FMargin(2.0f, 2.0f, 0, 0))
-				[
-					SNew(SBox)
-					.WidthOverride(StaminaBarSize.X)
-					.HeightOverride(StaminaBarSize.Y)
-					[
-						SNew(SBorder)
-						.BorderImage(WhiteBrush)
-						.BorderBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.35f))
-					]
-				]
-				// Main stamina bar
-				+ SOverlay::Slot()
-				[
-					SNew(SBox)
-					.WidthOverride(StaminaBarSize.X)
-					.HeightOverride(StaminaBarSize.Y)
-					[
-						SAssignNew(StaminaBorder, SBorder)
-						.BorderImage(WhiteBrush)
-						.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f, 0.7f))
-						.Padding(FMargin(2.0f, 3.0f))
-						[
-							SAssignNew(StaminaBarWidget, SProgressBar)
-							.Percent(1.0f)
-							.BarFillType(EProgressBarFillType::RightToLeft)
-							.FillColorAndOpacity(FLinearColor(0.85f, 0.7f, 0.25f, 1.0f))
-							.BackgroundImage(WhiteBrush)
-							.FillImage(WhiteBrush)
-						]
-					]
-				]
+				SNew(SBorder)
+				.BorderImage(WhiteBrush)
+				.BorderBackgroundColor(SoulsColors::FrameHighlight())
 			]
+		]
+		// Layer 3: Segment dividers (if enabled)
+		+ SOverlay::Slot()
+		.Padding(FMargin(FrameThickness + 1.0f, FrameThickness + 1.0f, 0, 0))
+		[
+			SegmentOverlay.IsValid() ? SegmentOverlay.ToSharedRef() : SNullWidget::NullWidget
 		];
 }
 
@@ -137,46 +253,117 @@ void UPlayerStatsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 
 	AnimationTime += InDeltaTime;
 
-	// Update EKG animation speed based on health (faster heartbeat at low health)
-	if (HealthMaterialInstance && HealthComponent)
+	if (!HealthComponent)
 	{
-		float HealthPercent = HealthComponent->GetHealthPercent();
-		// Speed up heartbeat as health decreases (1.0 at full health, up to 3.0 at low health)
-		float HeartbeatSpeed = FMath::Lerp(3.0f, 1.0f, HealthPercent);
-		HealthMaterialInstance->SetScalarParameterValue(TEXT("Speed"), HeartbeatSpeed);
+		return;
+	}
 
-		// Detect damage taken - flash effect
-		if (HealthPercent < LastHealthPercent - 0.01f)
-		{
-			DamageFlashTimer = 0.3f; // Flash for 0.3 seconds
-		}
-		LastHealthPercent = HealthPercent;
+	// Get current target values
+	TargetHealthPercent = HealthComponent->GetHealthPercent();
+	TargetStaminaPercent = HealthComponent->GetStaminaPercent();
 
-		// Update damage flash
-		if (DamageFlashTimer > 0.0f)
-		{
-			DamageFlashTimer -= InDeltaTime;
-		}
+	// Smooth the displayed values for fluid animation
+	const float SmoothSpeed = 8.0f;
+	DisplayedHealthPercent = FMath::FInterpTo(DisplayedHealthPercent, TargetHealthPercent, InDeltaTime, SmoothSpeed);
+	DisplayedStaminaPercent = FMath::FInterpTo(DisplayedStaminaPercent, TargetStaminaPercent, InDeltaTime, SmoothSpeed * 1.5f);
 
-		// Subtle pulse at low health - just vary the alpha slightly
-		if (HealthBorder.IsValid() && HealthPercent <= LowHealthThreshold && !HealthComponent->IsDead())
-		{
-			float Pulse = (FMath::Sin(AnimationTime * 4.0f) + 1.0f) * 0.5f;
-			float Alpha = FMath::Lerp(0.75f, 0.95f, Pulse);
-			HealthBorder->SetBorderBackgroundColor(FLinearColor(0.08f, 0.02f, 0.02f, Alpha));
-		}
-		else if (HealthBorder.IsValid() && DamageFlashTimer > 0.0f)
-		{
-			// Brief flash on damage - subtle red tint
-			float Flash = DamageFlashTimer / 0.3f;
-			float RedTint = FMath::Lerp(0.02f, 0.12f, Flash);
-			HealthBorder->SetBorderBackgroundColor(FLinearColor(RedTint, 0.02f, 0.02f, 0.85f));
-		}
-		else if (HealthBorder.IsValid())
-		{
-			// Normal state - near black
-			HealthBorder->SetBorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f, 0.85f));
-		}
+	// Damage trail effect - delay before it catches up
+	if (DamageTrailDelay > 0.0f)
+	{
+		DamageTrailDelay -= InDeltaTime;
+	}
+	else
+	{
+		// Trail slowly catches up to actual health
+		DamageTrailPercent = FMath::FInterpTo(DamageTrailPercent, TargetHealthPercent, InDeltaTime, 3.0f);
+	}
+
+	// Update damage flash
+	if (DamageFlashTimer > 0.0f)
+	{
+		DamageFlashTimer -= InDeltaTime;
+	}
+
+	// Update visual displays
+	UpdateHealthBar();
+	UpdateStaminaBar();
+}
+
+void UPlayerStatsWidget::UpdateHealthBar()
+{
+	if (!HealthFillBox.IsValid() || !HealthDamageBox.IsValid() || !HealthFillBorder.IsValid())
+	{
+		return;
+	}
+
+	// Calculate bar widths based on current percentages
+	float InnerWidth = HealthBarWidth - (FrameThickness * 2) - 2.0f;  // Account for frame and inner padding
+	float FillWidth = InnerWidth * FMath::Clamp(DisplayedHealthPercent, 0.0f, 1.0f);
+	float TrailWidth = InnerWidth * FMath::Clamp(DamageTrailPercent, 0.0f, 1.0f);
+
+	// Update SBox width overrides
+	HealthFillBox->SetWidthOverride(FillWidth);
+	HealthDamageBox->SetWidthOverride(TrailWidth);
+
+	// Color based on health state
+	FLinearColor FillColor;
+	if (HealthComponent && HealthComponent->IsDead())
+	{
+		FillColor = FLinearColor(0.1f, 0.05f, 0.05f, 0.5f);
+	}
+	else if (TargetHealthPercent <= CriticalHealthThreshold)
+	{
+		// Critical health - pulse effect
+		float Pulse = (FMath::Sin(AnimationTime * 6.0f) + 1.0f) * 0.5f;
+		FillColor = FMath::Lerp(SoulsColors::HealthCritical(), SoulsColors::HealthFill(), Pulse * 0.5f);
+	}
+	else if (DamageFlashTimer > 0.0f)
+	{
+		// Flash white briefly on damage
+		float Flash = DamageFlashTimer / 0.15f;
+		FillColor = FMath::Lerp(SoulsColors::HealthFill(), FLinearColor(1.0f, 0.9f, 0.8f, 1.0f), Flash * 0.3f);
+	}
+	else
+	{
+		FillColor = SoulsColors::HealthFill();
+	}
+
+	HealthFillBorder->SetBorderBackgroundColor(FillColor);
+}
+
+void UPlayerStatsWidget::UpdateStaminaBar()
+{
+	if (!StaminaFillBox.IsValid() || !StaminaFillBorder.IsValid())
+	{
+		return;
+	}
+
+	// Calculate bar width
+	float InnerWidth = StaminaBarWidth - (FrameThickness * 2) - 2.0f;
+	float FillWidth = InnerWidth * FMath::Clamp(DisplayedStaminaPercent, 0.0f, 1.0f);
+
+	// Update SBox width override
+	StaminaFillBox->SetWidthOverride(FillWidth);
+
+	// Color interpolation based on stamina level
+	FLinearColor FillColor;
+	if (TargetStaminaPercent < 0.15f)
+	{
+		// Very low stamina - darker, depleted look
+		FillColor = SoulsColors::StaminaDepleted();
+	}
+	else
+	{
+		// Normal stamina - interpolate from depleted to full
+		FillColor = FMath::Lerp(SoulsColors::StaminaDepleted(), SoulsColors::StaminaFill(), TargetStaminaPercent);
+	}
+
+	StaminaFillBorder->SetBorderBackgroundColor(FillColor);
+
+	// Hide damage bar for stamina (not needed)
+	if (StaminaDamageBox.IsValid())
+	{
+		StaminaDamageBox->SetWidthOverride(0.0f);
 	}
 }
 
@@ -194,125 +381,39 @@ void UPlayerStatsWidget::InitializeStats(UHealthComponent* InHealthComponent)
 	HealthComponent->OnStaminaChanged.AddDynamic(this, &UPlayerStatsWidget::OnStaminaChanged);
 	HealthComponent->OnDeath.AddDynamic(this, &UPlayerStatsWidget::OnDeath);
 
+	// Initialize display values
+	TargetHealthPercent = HealthComponent->GetHealthPercent();
+	DisplayedHealthPercent = TargetHealthPercent;
+	DamageTrailPercent = TargetHealthPercent;
+	TargetStaminaPercent = HealthComponent->GetStaminaPercent();
+	DisplayedStaminaPercent = TargetStaminaPercent;
+
 	// Initial update
 	UpdateDisplay();
 }
 
 void UPlayerStatsWidget::UpdateDisplay()
 {
-	UpdateHealthMaterial();
+	UpdateHealthBar();
 	UpdateStaminaBar();
-}
-
-void UPlayerStatsWidget::CreateHealthMaterial()
-{
-	// Load the EKG material
-	UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, *EKGMaterialPath);
-	if (BaseMaterial)
-	{
-		HealthMaterialInstance = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-		if (HealthMaterialInstance)
-		{
-			// Set up brush to use the material
-			HealthBrush.SetResourceObject(HealthMaterialInstance);
-			HealthBrush.ImageSize = FVector2D(HealthImageSize.X, HealthImageSize.Y);
-			HealthBrush.DrawAs = ESlateBrushDrawType::Image;
-
-			// Update the image widget if it exists
-			if (HealthImageWidget.IsValid())
-			{
-				HealthImageWidget->SetImage(&HealthBrush);
-			}
-		}
-	}
-}
-
-void UPlayerStatsWidget::UpdateHealthMaterial()
-{
-	if (!HealthMaterialInstance || !HealthComponent)
-	{
-		return;
-	}
-
-	float HealthPercent = HealthComponent->GetHealthPercent();
-	FLinearColor HealthColor = GetHealthColor(HealthPercent);
-
-	// Update material parameters
-	HealthMaterialInstance->SetVectorParameterValue(TEXT("Color"), HealthColor);
-	HealthMaterialInstance->SetVectorParameterValue(TEXT("LineColor"), HealthColor);
-
-	// If dead, flatline the EKG
-	if (HealthComponent->IsDead())
-	{
-		HealthMaterialInstance->SetScalarParameterValue(TEXT("Amplitude"), 0.0f);
-		if (HealthBorder.IsValid())
-		{
-			HealthBorder->SetBorderBackgroundColor(FLinearColor(0.05f, 0.05f, 0.05f, 0.6f));
-		}
-	}
-	else
-	{
-		// Scale amplitude with health (lower health = weaker signal)
-		float Amplitude = FMath::Lerp(0.4f, 1.0f, HealthPercent);
-		HealthMaterialInstance->SetScalarParameterValue(TEXT("Amplitude"), Amplitude);
-	}
-}
-
-void UPlayerStatsWidget::UpdateStaminaBar()
-{
-	if (!StaminaBarWidget.IsValid() || !HealthComponent)
-	{
-		return;
-	}
-
-	float StaminaPercent = HealthComponent->GetStaminaPercent();
-	StaminaBarWidget->SetPercent(StaminaPercent);
-
-	// Stamina color: warm gold when full, dims as depleted
-	const FLinearColor StaminaFull = FLinearColor(0.9f, 0.75f, 0.3f, 1.0f);
-	const FLinearColor StaminaLow = FLinearColor(0.4f, 0.25f, 0.1f, 1.0f);
-
-	FLinearColor StaminaColor = FMath::Lerp(StaminaLow, StaminaFull, StaminaPercent);
-	StaminaBarWidget->SetFillColorAndOpacity(StaminaColor);
-}
-
-FLinearColor UPlayerStatsWidget::GetHealthColor(float HealthPercent) const
-{
-	// Classic green → yellow → red health colors
-	const FLinearColor HealthGreen = FLinearColor(0.2f, 0.9f, 0.3f, 1.0f);  // Vibrant green
-	const FLinearColor HealthYellow = FLinearColor(1.0f, 0.85f, 0.1f, 1.0f); // Bright yellow
-	const FLinearColor HealthRed = FLinearColor(0.95f, 0.15f, 0.1f, 1.0f);   // Vivid red
-
-	if (HealthPercent <= LowHealthThreshold)
-	{
-		// Low health - red
-		return HealthRed;
-	}
-	else if (HealthPercent <= MediumHealthThreshold)
-	{
-		// Medium health - interpolate between red and yellow
-		float T = (HealthPercent - LowHealthThreshold) / (MediumHealthThreshold - LowHealthThreshold);
-		return FMath::Lerp(HealthRed, HealthYellow, T);
-	}
-	else
-	{
-		// High health - interpolate between yellow and green
-		float T = (HealthPercent - MediumHealthThreshold) / (1.0f - MediumHealthThreshold);
-		return FMath::Lerp(HealthYellow, HealthGreen, T);
-	}
 }
 
 void UPlayerStatsWidget::OnHealthChanged(float CurrentHealth, float MaxHealth, float Delta, AActor* DamageCauser)
 {
-	UpdateHealthMaterial();
+	if (Delta < 0.0f)
+	{
+		// Took damage - start damage flash and trail delay
+		DamageFlashTimer = 0.15f;
+		DamageTrailDelay = 0.5f;  // Trail waits before catching up
+	}
 }
 
 void UPlayerStatsWidget::OnStaminaChanged(float CurrentStamina, float MaxStamina, float Delta)
 {
-	UpdateStaminaBar();
+	// Stamina changes are handled in tick for smooth animation
 }
 
 void UPlayerStatsWidget::OnDeath(AActor* KilledBy, AController* InstigatorController)
 {
-	UpdateHealthMaterial();
+	// Death state is handled in UpdateHealthBar
 }

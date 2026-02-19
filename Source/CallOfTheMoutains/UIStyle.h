@@ -61,6 +61,25 @@ namespace COTMStyle
 		inline FLinearColor GlowInner()           { return FLinearColor(0.4f, 0.25f, 0.1f, 0.4f); }
 		inline FLinearColor GlowOuter()           { return FLinearColor(0.2f, 0.12f, 0.05f, 0.25f); }
 		inline FLinearColor Shadow()              { return FLinearColor(0.0f, 0.0f, 0.0f, 0.5f); }
+
+		// --- Stat Bars (Health/Stamina) ---
+		inline FLinearColor HealthFill()          { return FLinearColor(0.7f, 0.12f, 0.08f, 1.0f); }
+		inline FLinearColor HealthCritical()      { return FLinearColor(0.5f, 0.05f, 0.05f, 1.0f); }
+		inline FLinearColor HealthBackground()    { return FLinearColor(0.15f, 0.03f, 0.02f, 0.9f); }
+		inline FLinearColor StaminaFill()         { return FLinearColor(0.25f, 0.55f, 0.45f, 1.0f); }
+		inline FLinearColor StaminaDepleted()     { return FLinearColor(0.12f, 0.25f, 0.2f, 1.0f); }
+		inline FLinearColor StaminaBackground()   { return FLinearColor(0.04f, 0.08f, 0.07f, 0.85f); }
+
+		// --- Faith Currency ---
+		inline FLinearColor FaithGlow()           { return FLinearColor(0.95f, 0.75f, 0.25f, 1.0f); }
+		inline FLinearColor FaithCore()           { return FLinearColor(1.0f, 0.85f, 0.4f, 1.0f); }
+		inline FLinearColor TextGain()            { return FLinearColor(0.4f, 0.9f, 0.4f, 1.0f); }
+		inline FLinearColor TextLoss()            { return FLinearColor(0.9f, 0.3f, 0.2f, 1.0f); }
+
+		// --- Frame Colors (for bars) ---
+		inline FLinearColor FrameRust()           { return FLinearColor(0.35f, 0.2f, 0.1f, 0.95f); }
+		inline FLinearColor FrameIronDark()       { return FLinearColor(0.15f, 0.12f, 0.1f, 0.9f); }
+		inline FLinearColor FrameHighlight()      { return FLinearColor(0.5f, 0.3f, 0.15f, 0.6f); }
 	}
 
 	// ============================================================================
