@@ -68,16 +68,17 @@ void UPlayerStatsWidget::ReleaseSlateResources(bool bReleaseChildren)
 
 TSharedRef<SWidget> UPlayerStatsWidget::RebuildWidget()
 {
-	// Main container - anchored to top-left
+	// Main container - anchored to top-right
 	return SNew(SBox)
-		.HAlign(HAlign_Left)
+		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Top)
-		.Padding(FMargin(CornerPadding.X, CornerPadding.Y, 0, 0))
+		.Padding(FMargin(0, CornerPadding.Y, CornerPadding.X, 0))
 		[
 			SNew(SVerticalBox)
 			// Health Bar
 			+ SVerticalBox::Slot()
 			.AutoHeight()
+			.HAlign(HAlign_Right)
 			.Padding(FMargin(0, 0, 0, BarSpacing))
 			[
 				BuildStatBar(
@@ -94,7 +95,8 @@ TSharedRef<SWidget> UPlayerStatsWidget::RebuildWidget()
 			// Stamina Bar - slightly offset for visual interest
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(FMargin(16.0f, 0, 0, 0))  // Indented from health bar
+			.HAlign(HAlign_Right)
+			.Padding(FMargin(0, 0, 16.0f, 0))  // Indented from right edge
 			[
 				BuildStatBar(
 					StaminaFillBox,
@@ -197,8 +199,9 @@ TSharedRef<SWidget> UPlayerStatsWidget::BuildStatBar(
 							.BorderBackgroundColor(BackgroundColor)
 						]
 						// Damage trail bar (shows where health was) - wrapped in SBox for size control
+						// Drains from right to left
 						+ SOverlay::Slot()
-						.HAlign(HAlign_Left)
+						.HAlign(HAlign_Right)
 						[
 							SAssignNew(OutDamageBox, SBox)
 							.WidthOverride(Width)  // Full width initially
@@ -210,8 +213,9 @@ TSharedRef<SWidget> UPlayerStatsWidget::BuildStatBar(
 							]
 						]
 						// Main fill bar - wrapped in SBox for size control
+						// Drains from right to left
 						+ SOverlay::Slot()
-						.HAlign(HAlign_Left)
+						.HAlign(HAlign_Right)
 						[
 							SAssignNew(OutFillBox, SBox)
 							.WidthOverride(Width)  // Full width initially

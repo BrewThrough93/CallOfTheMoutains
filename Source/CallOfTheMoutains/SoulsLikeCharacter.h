@@ -20,8 +20,10 @@ class UInventoryWidget;
 class UHotbarWidget;
 class UInteractionPromptWidget;
 class UPlayerStatsWidget;
+class UFaithWidget;
 class AItemPickup;
 class UHealthComponent;
+class UFaithComponent;
 class UAnimMontage;
 class UExoMovementComponent;
 
@@ -73,6 +75,10 @@ public:
 	/** Health and stamina component */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
 	UHealthComponent* HealthComponent;
+
+	/** Faith (currency) component */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Faith")
+	UFaithComponent* FaithComponent;
 
 	/** Exo-suit movement component (double jump, ledge grab, etc.) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -157,6 +163,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "UI")
 	UPlayerStatsWidget* PlayerStatsWidget;
 
+	/** Faith widget class (currency display - bottom right) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UFaithWidget> FaithWidgetClass;
+
+	/** Active faith widget instance */
+	UPROPERTY(BlueprintReadOnly, Category = "UI")
+	UFaithWidget* FaithWidget;
+
 	// ==================== Camera Settings ====================
 
 	/** Base camera distance */
@@ -178,6 +192,24 @@ public:
 	/** Camera lag speed for smooth following */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Settings", meta = (ClampMin = "0.0", ClampMax = "20.0"))
 	float CameraLagSpeed = 10.0f;
+
+	// ==================== Camera Clipping Prevention ====================
+
+	/** Minimum camera distance before mesh starts hiding */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Clipping", meta = (ClampMin = "0.0"))
+	float MinCameraDistance = 100.0f;
+
+	/** Distance at which mesh is fully hidden */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Clipping", meta = (ClampMin = "0.0"))
+	float MeshHideDistance = 50.0f;
+
+	/** Enable mesh hiding when camera clips */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Clipping")
+	bool bHideMeshOnCameraClip = true;
+
+	/** Camera probe size (larger = earlier collision detection) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Clipping", meta = (ClampMin = "1.0", ClampMax = "50.0"))
+	float CameraProbeSize = 24.0f;
 
 	// ==================== Functions ====================
 	// Note: Dodge is handled by SoulsLikePlayerController
@@ -273,6 +305,9 @@ protected:
 
 	// Exo movement - ledge grab check
 	void CheckLedgeGrab();
+
+	// Camera clipping prevention
+	void UpdateCameraClipping();
 
 private:
 	// Jump held state for ledge grab

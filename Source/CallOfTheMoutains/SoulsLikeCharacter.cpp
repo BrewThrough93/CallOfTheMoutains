@@ -11,7 +11,9 @@
 #include "HotbarWidget.h"
 #include "InteractionPromptWidget.h"
 #include "PlayerStatsWidget.h"
+#include "FaithWidget.h"
 #include "HealthComponent.h"
+#include "FaithComponent.h"
 #include "ItemTypes.h"
 #include "Camera/CameraComponent.h"
 #include "Blueprint/UserWidget.h"
@@ -86,6 +88,11 @@ ASoulsLikeCharacter::ASoulsLikeCharacter()
 	CameraBoom->CameraLagSpeed = CameraLagSpeed;
 	CameraBoom->SocketOffset = CameraOffset;
 
+	// Camera collision settings for clipping prevention
+	CameraBoom->bDoCollisionTest = true;
+	CameraBoom->ProbeSize = CameraProbeSize;
+	CameraBoom->ProbeChannel = ECC_Camera;
+
 	// Create follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
@@ -101,6 +108,9 @@ ASoulsLikeCharacter::ASoulsLikeCharacter()
 
 	// Create health component
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+
+	// Create faith (currency) component
+	FaithComponent = CreateDefaultSubobject<UFaithComponent>(TEXT("FaithComponent"));
 
 	// Create exo movement component
 	ExoMovementComponent = CreateDefaultSubobject<UExoMovementComponent>(TEXT("ExoMovementComponent"));
@@ -176,6 +186,19 @@ void ASoulsLikeCharacter::BeginPlay()
 			PlayerStatsWidget->AddToViewport(1);
 			PlayerStatsWidget->InitializeStats(HealthComponent);
 		}
+
+		// Create Faith Widget (currency display - bottom right)
+		TSubclassOf<UFaithWidget> FaithClass = FaithWidgetClass;
+		if (!FaithClass)
+		{
+			FaithClass = UFaithWidget::StaticClass();
+		}
+		FaithWidget = CreateWidget<UFaithWidget>(PlayerController, FaithClass);
+		if (FaithWidget)
+		{
+			FaithWidget->AddToViewport(2);
+			FaithWidget->InitializeFaith(FaithComponent);
+		}
 	}
 
 	// Bind to interaction component events
@@ -230,6 +253,9 @@ void ASoulsLikeCharacter::Tick(float DeltaTime)
 
 	// Update camera
 	UpdateCamera(DeltaTime);
+
+	// Handle camera clipping (hide mesh when camera too close)
+	UpdateCameraClipping();
 
 	// Handle hotbar input (Arrow keys + I key)
 	HandleHotbarInput();
@@ -919,5 +945,51 @@ void ASoulsLikeCharacter::CheckLedgeGrab()
 	if (ExoMovementComponent->TryLedgeGrab())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Player: Ledge grabbed while jumping"));
+	}
+}
+
+void ASoulsLikeCharacter::UpdateCameraClipping()
+{
+	if (!bHideMeshOnCameraClip || !CameraBoom || !GetMesh())
+	{
+		return;
+	}
+
+	// Update probe size in case it was changed at runtime
+	CameraBoom->ProbeSize = CameraProbeSize;
+
+	// Get actual camera distance (after collision)
+	float CurrentArmLength = CameraBoom->GetTargetRotation().IsNearlyZero()
+		? CameraBoom->TargetArmLength
+		: (FollowCamera->GetComponentLocation() - CameraBoom->GetComponentLocation()).Size();
+
+	// Calculate actual distance from spring arm socket to camera
+	FVector SpringArmLocation = CameraBoom->GetComponentLocation();
+	FVector CameraLocation = FollowCamera->GetComponentLocation();
+	float ActualDistance = FVector::Dist(SpringArmLocation, CameraLocation);
+
+	// Determine mesh visibility based on camera distance
+	if (ActualDistance <= MeshHideDistance)
+	{
+		// Camera is too close - hide mesh completely
+		GetMesh()->SetVisibility(false, true);
+	}
+	else if (ActualDistance <= MinCameraDistance)
+	{
+		// Camera is getting close - could fade here, but for now just show
+		GetMesh()->SetVisibility(true, true);
+
+		// Optional: Set mesh to only render in shadows when close
+		// This makes the character not render but still cast shadows
+		if (ActualDistance <= MeshHideDistance * 1.5f)
+		{
+			GetMesh()->SetCastShadow(true);
+			GetMesh()->SetVisibility(false, true);
+		}
+	}
+	else
+	{
+		// Camera is at normal distance - show mesh
+		GetMesh()->SetVisibility(true, true);
 	}
 }
